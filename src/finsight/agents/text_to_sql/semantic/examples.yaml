@@ -1,0 +1,23 @@
+# Approved few-shot examples (development/demo). Evaluation questions live separately in evals/text_to_sql/golden.yaml.
+version: 1
+examples:
+  - id: demo_volume_by_channel
+    question: How many transactions and how much value per channel?
+    sql: "SELECT channel, COUNT(*) AS transaction_count, SUM(amount) AS transaction_value FROM marts.fact_transactions GROUP BY channel ORDER BY transaction_count DESC"
+    chart: {type: bar, x: channel, y: transaction_count}
+  - id: demo_daily_trend
+    question: Show the daily transaction count trend.
+    sql: "SELECT d.date_day, m.txn_count FROM marts.metrics_daily m JOIN marts.dim_date d USING (date_key) ORDER BY d.date_day"
+    chart: {type: line, x: date_day, y: txn_count}
+  - id: demo_fraud_by_category
+    question: Which merchant categories have the highest fraud exposure?
+    sql: "SELECT category_code, fraud_exposure FROM marts.metrics_by_category ORDER BY fraud_exposure DESC LIMIT 10"
+    chart: {type: bar, x: category_code, y: fraud_exposure}
+  - id: demo_overall_fraud_rate
+    question: What is the overall confirmed fraud rate?
+    sql: "SELECT COUNT(*) FILTER (WHERE is_fraud_label) * 1.0 / NULLIF(COUNT(*) FILTER (WHERE has_label), 0) AS confirmed_fraud_rate FROM marts.fact_transactions"
+    chart: {type: table}
+  - id: demo_alert_severity
+    question: How many alerts are there per severity?
+    sql: "SELECT severity, COUNT(*) AS alert_count FROM marts.fact_fraud_alerts GROUP BY severity ORDER BY alert_count DESC"
+    chart: {type: bar, x: severity, y: alert_count}

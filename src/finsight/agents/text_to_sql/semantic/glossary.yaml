@@ -1,0 +1,47 @@
+# Canonical business definitions. The agent must use these instead of inventing metric logic.
+version: 1
+terms:
+  transaction_volume:
+    name: Transaction volume
+    definition: Number of transactions (declined included).
+    sql: "COUNT(*) FROM fact_transactions  -- or SUM(txn_count) FROM metrics_daily"
+  transaction_value:
+    name: Transaction value
+    definition: Sum of transaction amounts in EUR (declined included).
+    sql: "SUM(amount) FROM fact_transactions"
+  confirmed_fraud_rate:
+    name: Confirmed fraud rate (labeled fraud rate)
+    definition: Labeled fraud transactions divided by labeled transactions. In this synthetic dataset "confirmed" means the ground-truth label; it is not the flagged rate.
+    sql: "COUNT(*) FILTER (WHERE is_fraud_label) * 1.0 / NULLIF(COUNT(*) FILTER (WHERE has_label), 0) FROM fact_transactions"
+  flagged_transaction_rate:
+    name: Flagged transaction rate
+    definition: Transactions with an alert divided by all transactions. This is NOT the fraud rate.
+    sql: "COUNT(*) FILTER (WHERE is_flagged) * 1.0 / NULLIF(COUNT(*), 0) FROM fact_transactions"
+  fraud_loss:
+    name: Fraud loss
+    definition: Amount of labeled-fraud transactions that were not flagged (undetected fraud), assuming flagged fraud is stopped.
+    sql: "SUM(amount) FILTER (WHERE is_fraud_label AND NOT is_flagged) FROM fact_transactions"
+  estimated_financial_exposure:
+    name: Estimated financial exposure
+    definition: Gross amount of labeled-fraud transactions regardless of detection.
+    sql: "SUM(amount) FILTER (WHERE is_fraud_label) FROM fact_transactions"
+  false_positive_rate:
+    name: False-positive rate
+    definition: Alerted legitimate transactions divided by all labeled legitimate transactions (NOT false alerts divided by alerts).
+    sql: "COUNT(*) FILTER (WHERE is_flagged AND has_label AND NOT is_fraud_label) * 1.0 / NULLIF(COUNT(*) FILTER (WHERE has_label AND NOT is_fraud_label), 0) FROM fact_transactions"
+  precision_recall:
+    name: Precision and recall
+    definition: Precision = alerted fraud / alerted labeled transactions. Recall = alerted fraud / all labeled fraud.
+    sql: "precision: COUNT(*) FILTER (WHERE is_flagged AND is_fraud_label) * 1.0 / NULLIF(COUNT(*) FILTER (WHERE is_flagged AND has_label), 0); recall: COUNT(*) FILTER (WHERE is_flagged AND is_fraud_label) * 1.0 / NULLIF(COUNT(*) FILTER (WHERE is_fraud_label), 0)"
+  alert_conversion_rate:
+    name: Alert conversion rate
+    definition: Alerts that became investigation cases divided by all alerts. 'Alerts that became confirmed fraud' = alerts whose transaction has is_fraud_label (alert precision), different from investigation conversion.
+    sql: "investigation conversion: SELECT investigation_conversion_rate FROM metrics_alerts; alert precision: COUNT(*) FILTER (WHERE is_fraud_label) * 1.0 / NULLIF(COUNT(*) FILTER (WHERE has_label), 0) FROM fact_fraud_alerts"
+  investigation_resolution_time:
+    name: Investigation resolution time
+    definition: Mean hours between case opening and closing, for closed cases only.
+    sql: "AVG(resolution_hours) FROM fact_investigation_outcomes WHERE is_closed"
+  rule_false_positives:
+    name: Rule false positives
+    definition: Alerted legitimate transactions attributed to each fired rule (a transaction counts once per rule it triggered).
+    sql: "SELECT r AS rule, COUNT(*) FROM fact_fraud_predictions p CROSS JOIN LATERAL UNNEST(p.rules_triggered) AS r JOIN fact_transactions t USING (transaction_id) WHERE t.is_flagged AND t.has_label AND NOT t.is_fraud_label GROUP BY r"

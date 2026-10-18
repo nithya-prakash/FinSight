@@ -1,0 +1,160 @@
+# Allowlisted analytics schema (marts). The SQL policy is generated from this file; a test compares it to the live database.
+# sensitivity: pseudonymize -> bare selection of the column is replaced by a keyed pseudonym in results.
+version: 1
+schema: marts
+tables:
+  fact_transactions:
+    description: One row per transaction (grain transaction_id) with amount, channel, risk score, alert flag and ground-truth fraud label (synthetic).
+    columns:
+      transaction_id: {type: text, description: Unique transaction id}
+      date_key: {type: int, description: "FK to dim_date (YYYYMMDD) - event date"}
+      event_time: {type: timestamptz, description: When the transaction happened}
+      customer_id: {type: text, description: FK dim_customer, sensitivity: pseudonymize}
+      account_id: {type: text, description: FK dim_account, sensitivity: pseudonymize}
+      merchant_id: {type: text, description: FK dim_merchant (null for transfers and cash withdrawals)}
+      channel: {type: text, description: "online, pos, transfer, atm"}
+      transaction_type: {type: text, description: "purchase, transfer, cash_withdrawal"}
+      amount: {type: numeric, description: Amount in EUR}
+      currency: {type: text, description: Currency code}
+      status: {type: text, description: "approved or declined"}
+      is_declined: {type: boolean, description: Authorization declined}
+      prior_txn_count: {type: bigint, description: Customer transactions before this one}
+      prior_avg_amount: {type: numeric, description: Customer average amount before this one}
+      txn_count_10m: {type: bigint, description: Account transactions in trailing 10 minutes incl. this one}
+      txn_count_1h: {type: bigint, description: Account transactions in trailing hour incl. this one}
+      amount_sum_1h: {type: numeric, description: Account amount in trailing hour incl. this one}
+      model_version: {type: text, description: Model/rules version that scored it}
+      risk_score: {type: numeric, description: Ordinal risk score 0-1 (not a calibrated probability)}
+      is_flagged: {type: boolean, description: An alert was raised for this transaction}
+      has_label: {type: boolean, description: Ground-truth label exists}
+      is_fraud_label: {type: boolean, description: Ground-truth fraud (synthetic); null if no label}
+  fact_fraud_predictions:
+    description: One row per (transaction, model_version) score, including which rules triggered.
+    columns:
+      transaction_id: {type: text, description: Transaction id}
+      model_version: {type: text, description: Scoring model or rules version}
+      risk_score: {type: numeric, description: Risk score 0-1}
+      scored_at: {type: timestamptz, description: Scoring time}
+      rules_triggered: {type: "text[]", description: Names of fired rules (velocity, geo_inconsistency, ...)}
+      date_key: {type: int, description: FK dim_date}
+      account_id: {type: text, description: Account, sensitivity: pseudonymize}
+      amount: {type: numeric, description: Transaction amount}
+  fact_fraud_alerts:
+    description: One row per fraud alert with its transaction context and label.
+    columns:
+      alert_id: {type: bigint, description: Alert id}
+      transaction_id: {type: text, description: Alerted transaction}
+      severity: {type: text, description: "low, medium, high"}
+      alerted_at: {type: timestamptz, description: Alert creation time}
+      signal_count: {type: int, description: Number of signals on the alert}
+      date_key: {type: int, description: FK dim_date}
+      account_id: {type: text, description: Account, sensitivity: pseudonymize}
+      amount: {type: numeric, description: Transaction amount}
+      risk_score: {type: numeric, description: Risk score}
+      has_label: {type: boolean, description: Ground-truth label exists}
+      is_fraud_label: {type: boolean, description: Ground-truth fraud (synthetic)}
+      is_investigated: {type: boolean, description: An investigation case exists for this alert}
+  fact_investigation_outcomes:
+    description: One row per investigation case.
+    columns:
+      case_id: {type: bigint, description: Case id}
+      alert_id: {type: bigint, description: Alert id}
+      transaction_id: {type: text, description: Transaction id}
+      case_status: {type: text, description: "open, escalated, closed_fraud, closed_legit"}
+      opened_at: {type: timestamptz, description: Opened}
+      closed_at: {type: timestamptz, description: Closed}
+      is_closed: {type: boolean, description: Case closed}
+      resolution_hours: {type: numeric, description: Hours from open to close}
+  dim_customer:
+    description: Customers (no names). segment and home_region are quasi-identifiers.
+    columns:
+      customer_id: {type: text, description: Customer id, sensitivity: pseudonymize}
+      segment: {type: text, description: "retail, premium, small_business", quasi_identifier: true}
+      home_region: {type: text, description: Home region code, quasi_identifier: true}
+      customer_since: {type: date, description: Customer since, quasi_identifier: true}
+  dim_account:
+    description: Accounts.
+    columns:
+      account_id: {type: text, description: Account id, sensitivity: pseudonymize}
+      customer_id: {type: text, description: Owner, sensitivity: pseudonymize}
+      account_type: {type: text, description: "checking, savings, credit_card"}
+      currency: {type: text, description: Currency}
+      opened_date: {type: date, description: Opened}
+  dim_merchant:
+    description: Merchants with category and risk tier.
+    columns:
+      merchant_id: {type: text, description: Merchant id}
+      merchant_name: {type: text, description: Synthetic merchant name}
+      category_code: {type: text, description: "grocery, restaurant, fuel, utilities, travel, electronics, luxury, jewelry, gift_cards, online_gaming"}
+      category_description: {type: text, description: Category description}
+      risk_tier: {type: text, description: "low, medium, high"}
+      region: {type: text, description: Merchant region}
+  dim_date:
+    description: Calendar dimension for the observed period.
+    columns:
+      date_key: {type: int, description: YYYYMMDD}
+      date_day: {type: date, description: Calendar date}
+      iso_weekday: {type: int, description: 1=Mon..7=Sun}
+      weekday_name: {type: text, description: Weekday abbreviation}
+      week_start: {type: date, description: Monday of the week}
+      month_start: {type: date, description: First day of the month}
+      is_weekend: {type: boolean, description: Saturday or Sunday}
+  dim_channel:
+    description: Transaction channels.
+    columns:
+      channel: {type: text, description: Channel code}
+      description: {type: text, description: Description}
+  dim_transaction_type:
+    description: Transaction types.
+    columns:
+      transaction_type: {type: text, description: Type code}
+      description: {type: text, description: Description}
+  metrics_daily:
+    description: Pre-aggregated daily KPIs (volume, value, fraud rate, flagged rate, precision, recall, false-positive rate, confusion counts).
+    columns:
+      date_key: {type: int, description: FK dim_date}
+      txn_count: {type: bigint, description: Transactions}
+      txn_value: {type: numeric, description: Total amount}
+      labeled_txn_count: {type: bigint, description: Labeled transactions}
+      fraud_txn_count: {type: bigint, description: Labeled fraud transactions}
+      fraud_value: {type: numeric, description: Amount of labeled fraud}
+      flagged_txn_count: {type: bigint, description: Alerted transactions}
+      true_positives: {type: bigint, description: Alerted and fraud}
+      false_positives: {type: bigint, description: Alerted and legitimate}
+      false_negatives: {type: bigint, description: Fraud not alerted}
+      actual_negatives: {type: bigint, description: Labeled legitimate}
+      fraud_rate: {type: numeric, description: Labeled fraud / labeled transactions}
+      flagged_rate: {type: numeric, description: Alerted / all transactions (NOT the fraud rate)}
+      precision: {type: numeric, description: TP/(TP+FP)}
+      recall: {type: numeric, description: TP/(TP+FN)}
+      false_positive_rate: {type: numeric, description: FP / actual negatives}
+  metrics_by_category:
+    description: Fraud metrics per merchant category over the whole period.
+    columns:
+      category_code: {type: text, description: Merchant category}
+      risk_tier: {type: text, description: Category risk tier}
+      txn_count: {type: bigint, description: Transactions}
+      txn_value: {type: numeric, description: Total amount}
+      fraud_txn_count: {type: bigint, description: Labeled fraud transactions}
+      fraud_exposure: {type: numeric, description: Amount of labeled fraud}
+      fraud_rate: {type: numeric, description: Labeled fraud / labeled transactions}
+  metrics_alerts:
+    description: Single-row summary of alert-to-investigation conversion and resolution time.
+    columns:
+      alert_count: {type: bigint, description: Alerts}
+      investigated_count: {type: bigint, description: Alerts with a case}
+      investigation_conversion_rate: {type: numeric, description: Investigated / alerts}
+      avg_resolution_hours: {type: numeric, description: Mean hours to close}
+      confirmed_fraud_cases: {type: bigint, description: Cases closed as fraud}
+joins:
+  - "fact_transactions.date_key = dim_date.date_key"
+  - "fact_transactions.merchant_id = dim_merchant.merchant_id"
+  - "fact_transactions.customer_id = dim_customer.customer_id"
+  - "fact_transactions.account_id = dim_account.account_id"
+  - "fact_transactions.channel = dim_channel.channel"
+  - "fact_transactions.transaction_type = dim_transaction_type.transaction_type"
+  - "fact_fraud_alerts.transaction_id = fact_transactions.transaction_id"
+  - "fact_fraud_predictions.transaction_id = fact_transactions.transaction_id"
+  - "fact_investigation_outcomes.alert_id = fact_fraud_alerts.alert_id"
+  - "metrics_daily.date_key = dim_date.date_key"
+data_range_note: "Data covers a synthetic period; use dim_date / MAX(date_day) for 'last N days' instead of the wall clock."

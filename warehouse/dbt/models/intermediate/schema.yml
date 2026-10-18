@@ -1,0 +1,15 @@
+version: 2
+models:
+  - name: int_customer_transaction_history
+    description: Customer behaviour strictly before each transaction (no look-ahead).
+    columns: [{name: transaction_id, tests: [unique, not_null]}]
+  - name: int_account_velocity
+    description: Trailing 10-minute and 1-hour account activity, including the current transaction.
+    columns: [{name: transaction_id, tests: [unique, not_null]}]
+  - name: int_transactions_labeled
+    description: Transactions joined with latest prediction, alert flag and offline label.
+    columns: [{name: transaction_id, tests: [unique, not_null]}]
+  - name: int_merchant_aggregates
+    columns: [{name: merchant_id, tests: [unique, not_null]}]
+  - name: int_alert_investigations
+    columns: [{name: alert_id, tests: [unique, not_null]}]

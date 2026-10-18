@@ -1,0 +1,144 @@
+name: finsight
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-finsight}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-finsight_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-finsight}
+    ports: ["127.0.0.1:${POSTGRES_PORT:-5433}:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.2.7
+    command: >
+      redpanda start --mode dev-container --smp 1 --memory 512M --reserve-memory 0M --overprovisioned
+      --node-id 0 --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
+      --advertise-kafka-addr internal://redpanda:9092,external://localhost:19092
+    ports: ["127.0.0.1:19092:19092"]
+    volumes: [redpanda:/var/lib/redpanda/data]
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -E 'Healthy:.+true'"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  api:
+    build: .
+    command: uvicorn finsight.api.main:app --host 0.0.0.0 --port 8000 --no-access-log
+    ports: ["127.0.0.1:8000:8000"]
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment: &appenv
+      DATABASE_URL: postgresql://${POSTGRES_USER:-finsight}:${POSTGRES_PASSWORD:-finsight_dev_password}@postgres:5432/${POSTGRES_DB:-finsight}
+      KAFKA_BOOTSTRAP: redpanda:9092
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      SCORING_MODE: ${SCORING_MODE:-rules}
+      ALERT_THRESHOLD: ${ALERT_THRESHOLD:-0.5}
+      BI_DATABASE_URL: postgresql://finsight_bi:${BI_PASSWORD:-finsight_bi_dev_password}@postgres:5432/${POSTGRES_DB:-finsight}
+      INVESTIGATOR_DATABASE_URL: postgresql://finsight_investigator:${INVESTIGATOR_PASSWORD:-finsight_inv_dev_password}@postgres:5432/${POSTGRES_DB:-finsight}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      AUTH_KEYS: ${AUTH_KEYS:-}
+      AUTH_DISABLED: ${AUTH_DISABLED:-false}
+      CONSUMER_METRICS_PORT: ${CONSUMER_METRICS_PORT:-9108}
+      PII_MASK_KEY: ${PII_MASK_KEY:-dev-only-mask-key-change-me}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+  fraud-consumer:
+    build: .
+    command: finsight consume
+    restart: unless-stopped
+    healthcheck:
+      # healthy only while the poll loop keeps refreshing its heartbeat file (stale > 60 s means hung or crashed)
+      test: ["CMD", "python", "-c", "import os,sys,time; sys.exit(0 if time.time()-os.path.getmtime('/tmp/consumer.heartbeat') < 60 else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    stop_grace_period: 15s
+    depends_on:
+      postgres: { condition: service_healthy }
+      redpanda: { condition: service_healthy }
+    environment: *appenv
+  dagster-webserver:
+    build: .
+    profiles: ["warehouse"]
+    command: dagster-webserver -h 0.0.0.0 -p 3000 -w orchestration/dagster/workspace.yaml
+    ports: ["127.0.0.1:3000:3000"]
+    depends_on: { postgres: { condition: service_healthy } }
+    volumes: [dagster_home:/dagster_home]
+    environment: &dagenv
+      <<: *appenv
+      DAGSTER_HOME: /dagster_home
+      DAGSTER_DBT_PARSE_PROJECT_ON_LOAD: "1"
+      DBT_PG_HOST: postgres
+      DBT_PG_PORT: "5432"
+      DBT_PG_USER: ${POSTGRES_USER:-finsight}
+      DBT_PG_PASSWORD: ${POSTGRES_PASSWORD:-finsight_dev_password}
+      DBT_PG_DBNAME: ${POSTGRES_DB:-finsight}
+  dagster-daemon:
+    build: .
+    profiles: ["warehouse"]
+    command: dagster-daemon run -w orchestration/dagster/workspace.yaml
+    restart: unless-stopped
+    depends_on: { postgres: { condition: service_healthy } }
+    volumes: [dagster_home:/dagster_home]
+    environment: *dagenv
+  mlflow:
+    build: .
+    profiles: ["ml"]
+    command: mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri sqlite:////mlflow/mlflow.db --artifacts-destination /mlflow/artifacts --serve-artifacts --allowed-hosts mlflow:5000,localhost:5000,127.0.0.1:5000
+    ports: ["127.0.0.1:5000:5000"]
+    volumes: [mlflow_data:/mlflow]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:5000/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+  web:
+    build: ./apps/web
+    ports: ["127.0.0.1:3001:3001"]
+    depends_on: { api: { condition: service_healthy } }
+    environment:
+      API_URL: http://api:8000
+      API_KEY: ${API_KEY:-}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3001/"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+  jaeger:
+    image: jaegertracing/all-in-one:1.62.0
+    profiles: ["observability"]
+    ports: ["127.0.0.1:16686:16686"]
+    environment: { COLLECTOR_OTLP_ENABLED: "true" }
+  tools:
+    build: .
+    profiles: ["tools"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redpanda: { condition: service_healthy }
+    volumes: ["./src:/app/src", "./tests:/app/tests", "./packages:/app/packages:ro", "./docs:/app/docs", "./warehouse:/app/warehouse", "./orchestration:/app/orchestration", "./evals:/app/evals", "./observability:/app/observability", "./docker-compose.yml:/app/docker-compose.yml:ro"]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-finsight}:${POSTGRES_PASSWORD:-finsight_dev_password}@postgres:5432/${POSTGRES_DB:-finsight}
+      KAFKA_BOOTSTRAP: redpanda:9092
+      BI_DATABASE_URL: postgresql://finsight_bi:${BI_PASSWORD:-finsight_bi_dev_password}@postgres:5432/${POSTGRES_DB:-finsight}
+      INVESTIGATOR_DATABASE_URL: postgresql://finsight_investigator:${INVESTIGATOR_PASSWORD:-finsight_inv_dev_password}@postgres:5432/${POSTGRES_DB:-finsight}
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      DBT_PG_HOST: postgres
+      DBT_PG_PORT: "5432"
+      DBT_PG_USER: ${POSTGRES_USER:-finsight}
+      DBT_PG_PASSWORD: ${POSTGRES_PASSWORD:-finsight_dev_password}
+      DBT_PG_DBNAME: ${POSTGRES_DB:-finsight}
+volumes:
+  pgdata:
+  redpanda:
+  dagster_home:
+  mlflow_data:

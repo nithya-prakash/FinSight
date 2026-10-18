@@ -1,0 +1,7 @@
+# Versioned pricing metadata for COST ESTIMATES (not billed amounts).
+# ILLUSTRATIVE PLACEHOLDERS: set these from your own Anthropic pricing/contract before relying on them.
+version: 1
+currency: USD
+per_million_tokens:
+  default: {input: 3.0, output: 15.0}
+  claude-sonnet-5-5: {input: 3.0, output: 15.0}

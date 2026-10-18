@@ -1,0 +1,53 @@
+version: 2
+models:
+  - name: dim_customer
+    description: "Grain: one row per customer."
+    columns: [{name: customer_id, tests: [unique, not_null]}]
+  - name: dim_account
+    description: "Grain: one row per account."
+    columns:
+      - {name: account_id, tests: [unique, not_null]}
+      - {name: customer_id, tests: [{relationships: {to: ref('dim_customer'), field: customer_id}}]}
+  - name: dim_merchant
+    description: "Grain: one row per merchant, with category and risk tier."
+    columns: [{name: merchant_id, tests: [unique, not_null]}]
+  - name: dim_date
+    description: "Grain: one row per calendar day spanning the observed transactions."
+    columns:
+      - {name: date_key, tests: [unique, not_null]}
+  - name: dim_channel
+    columns: [{name: channel, tests: [unique, not_null]}]
+  - name: dim_transaction_type
+    columns: [{name: transaction_type, tests: [unique, not_null]}]
+  - name: fact_transactions
+    description: "Grain: one row per transaction. is_fraud_label is ground truth for offline evaluation only (synthetic)."
+    columns:
+      - {name: transaction_id, tests: [unique, not_null]}
+      - {name: date_key, tests: [not_null, {relationships: {to: ref('dim_date'), field: date_key}}]}
+      - {name: customer_id, tests: [{relationships: {to: ref('dim_customer'), field: customer_id}}]}
+      - {name: account_id, tests: [{relationships: {to: ref('dim_account'), field: account_id}}]}
+      - {name: merchant_id, tests: [{relationships: {to: ref('dim_merchant'), field: merchant_id}}]}
+      - {name: channel, tests: [{relationships: {to: ref('dim_channel'), field: channel}}]}
+      - {name: transaction_type, tests: [{relationships: {to: ref('dim_transaction_type'), field: transaction_type}}]}
+      - {name: amount, tests: [not_null]}
+  - name: fact_fraud_predictions
+    description: "Grain: one row per (transaction_id, model_version)."
+    tests: [{unique: {column_name: "(transaction_id || '|' || model_version)"}}]
+    columns: [{name: risk_score, tests: [not_null]}]
+  - name: fact_fraud_alerts
+    description: "Grain: one row per alert."
+    columns:
+      - {name: alert_id, tests: [unique, not_null]}
+      - {name: transaction_id, tests: [{relationships: {to: ref('fact_transactions'), field: transaction_id}}]}
+  - name: fact_investigation_outcomes
+    description: "Grain: one row per investigation case."
+    columns: [{name: case_id, tests: [unique, not_null]}]
+  - name: metrics_daily
+    description: >
+      Daily KPIs. fraud_rate = labeled fraud / labeled transactions. flagged_rate = alerted / all transactions
+      (NOT the fraud rate). precision = TP/(TP+FP), recall = TP/(TP+FN), false_positive_rate = FP/actual negatives.
+    columns: [{name: date_key, tests: [unique, not_null]}]
+  - name: metrics_by_category
+    columns: [{name: category_code, tests: [unique, not_null]}]
+  - name: metrics_alerts
+    description: Alert-to-investigation conversion and resolution time.

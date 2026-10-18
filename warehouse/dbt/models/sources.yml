@@ -1,0 +1,21 @@
+version: 2
+sources:
+  # "raw" layer: written ONLY by the streaming consumer / seed (core) and the generator (eval). dbt never writes here.
+  - name: core
+    schema: core
+    tables:
+      - name: transactions
+        loaded_at_field: ingested_at
+        freshness: {warn_after: {count: 1, period: day}}
+      - {name: customers}
+      - {name: accounts}
+      - {name: merchants}
+      - {name: merchant_categories}
+      - {name: model_predictions}
+      - {name: fraud_alerts}
+      - {name: investigation_cases}
+      - {name: processed_events}
+  - name: eval
+    schema: eval
+    tables:
+      - name: fraud_labels

@@ -1,0 +1,44 @@
+# secrets and local configuration (keep .env.example, which holds placeholders only)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# node / next
+node_modules/
+.next/
+tsconfig.tsbuildinfo
+next-env.d.ts
+
+# generated artifacts and local state
+warehouse/dbt/target/
+warehouse/dbt/logs/
+warehouse/dbt/dbt_packages/
+evals/reports/
+mlruns/
+mlflow_data/
+dagster_home/
+*.db
+*.sqlite
+*.sqlite3
+*.log
+
+# editors / OS
+.DS_Store
+.idea/
+.vscode/
+# dbt anonymous usage id (machine-specific)
+warehouse/dbt/.user.yml

@@ -1,0 +1,36 @@
+version: 2
+models:
+  - name: stg_transactions
+    description: Deduplicated, typed transactions (grain = transaction_id). Currency upper-cased; non-positive amounts excluded.
+    columns:
+      - {name: transaction_id, description: Stable event identifier, tests: [unique, not_null]}
+      - {name: event_time, tests: [not_null]}
+      - {name: customer_id, tests: [not_null, {relationships: {to: ref('stg_customers'), field: customer_id}}]}
+      - {name: account_id, tests: [not_null, {relationships: {to: ref('stg_accounts'), field: account_id}}]}
+      - {name: merchant_id, tests: [{relationships: {to: ref('stg_merchants'), field: merchant_id}}]}
+      - {name: amount, tests: [not_null]}
+      - {name: channel, tests: [{accepted_values: {values: [online, pos, transfer, atm]}}]}
+      - {name: transaction_type, tests: [{accepted_values: {values: [purchase, transfer, cash_withdrawal]}}]}
+      - {name: status, tests: [{accepted_values: {values: [approved, declined]}}]}
+  - name: stg_customers
+    description: Customers without direct identifiers (name dropped).
+    columns: [{name: customer_id, tests: [unique, not_null]}]
+  - name: stg_accounts
+    columns: [{name: account_id, tests: [unique, not_null]}]
+  - name: stg_merchants
+    columns: [{name: merchant_id, tests: [unique, not_null]}]
+  - name: stg_predictions
+    description: Model/rule scores per (transaction, model_version).
+    columns:
+      - {name: transaction_id, tests: [not_null, {relationships: {to: ref('stg_transactions'), field: transaction_id}}]}
+      - {name: risk_score, tests: [not_null]}
+  - name: stg_alerts
+    columns:
+      - {name: alert_id, tests: [unique, not_null]}
+      - {name: transaction_id, tests: [unique, not_null]}
+      - {name: severity, tests: [{accepted_values: {values: [low, medium, high]}}]}
+  - name: stg_investigations
+    columns: [{name: case_id, tests: [unique, not_null]}]
+  - name: stg_fraud_labels
+    description: Ground truth for offline evaluation only.
+    columns: [{name: transaction_id, tests: [unique, not_null]}]

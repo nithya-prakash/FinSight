@@ -44,7 +44,7 @@ two defects in the verification script itself (wrong Compose project stopped; un
 
 ## Not verified / limitations
 * **Real Claude answer quality is unverified.** No successful live Anthropic call was made. The mock-transport and scripted-stand-in tests prove failure handling and orchestration only. Run `make live-claude` with a key to close this.
-* The GitHub Actions workflow has not run on GitHub (its commands were run locally). No `act` run.
+* GitHub Actions: the first run (commit `3055634`) failed in the golden Text-to-SQL step because the workflow seeded an unmigrated database; fixed in `2ede4af` (migrate first) and the second run passed (python, web and images jobs). The LLM-backed evaluation is not part of CI.
 * Authentication is shared API keys with two roles; the dashboard acts as one analyst. No per-user login, SSO, TLS or secrets manager.
 * `ruff format --check` fails on most files (the code was never auto-formatted); lint and mypy are enforced, formatting is not.
 * Synthetic data only: model scores say nothing about real fraud performance. Not production-ready. No load or performance testing, no browser end-to-end tests.

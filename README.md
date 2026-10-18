@@ -91,7 +91,7 @@ Synthetic data from a fixed seed; model training uses a chronological 60/20/20 s
 | Investigator (LangGraph, grounding checks, atomic decisions, audit trail) | implemented and verified with a scripted model; **real Claude analysis never run** |
 | Dashboard (8 views), OpenTelemetry tracing, Prometheus metrics | implemented and verified |
 | Per-user login / SSO, TLS, secrets manager, cloud deployment | **not implemented** |
-| GitHub Actions workflow | written, its commands run locally; **not yet run on GitHub** |
+| GitHub Actions workflow (lint, mypy, security gate, full test suite, golden set, web build, image builds) | passing on GitHub (run on commit `2ede4af`); the first run failed on a missing migration step, fixed in that commit |
 
 ## Limitations
 

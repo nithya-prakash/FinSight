@@ -24,7 +24,7 @@ jobs:
         run: docker compose run --rm tools pytest -q
       - name: Golden Text-to-SQL set, reference mode (no LLM credentials needed)
         run: |
-          docker compose run --rm tools sh -c 'finsight seed --reset --entities-only && finsight produce --profile dev --limit 1500 && finsight consume --max-messages 1500 --idle-exit 20 && dbt build --project-dir warehouse/dbt --profiles-dir warehouse/dbt --target-path /tmp/t --log-path /tmp/l && finsight eval text2sql --mode reference'
+          docker compose run --rm tools sh -c 'finsight migrate && finsight seed --reset --entities-only && finsight produce --profile dev --limit 1500 && finsight consume --max-messages 1500 --idle-exit 20 && dbt build --project-dir warehouse/dbt --profiles-dir warehouse/dbt --target-path /tmp/t --log-path /tmp/l && finsight eval text2sql --mode reference'
         env: {}
       - if: failure()
         run: docker compose logs --no-color | tail -200
